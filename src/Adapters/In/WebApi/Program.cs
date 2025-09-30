@@ -1,41 +1,70 @@
+using Core.Application;
+using Core.Application.DTOs;
+using Core.Application.Ports.In;
+using Core.Application.Ports.Out;
+using Core.Application.Services;
+using Core.Domain.Exceptions;
+using Adapters.Out.Persistence.InMemory;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+builder.Services.AddSingleton(new ShortUrlOptions
+{
+    BaseUrl = builder.Configuration["Shortener:BaseUrl"] ?? "http://localhost:5000",
+    MinTtlMinutes = 1,
+    MaxTtlDays = 365,
+    CodeLength = 7
+});
+
+builder.Services.AddSingleton<IClock>(new SystemClock());
+builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
+builder.Services.AddSingleton<IShortUrlRepository, InMemoryShortUrlRepository>();
+builder.Services.AddSingleton<ICreateShortUrl, CreateShortUrlService>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+app.UseSwagger();
+app.UseSwaggerUI();
 
-app.UseHttpsRedirection();
-
-var summaries = new[]
+app.Use(async (ctx, next) =>
 {
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+    try { await next(); }
+    catch (DomainException ex)
+    {
+        var status = ex switch
+        {
+            ValidationException => StatusCodes.Status400BadRequest,
+            ConflictException => StatusCodes.Status409Conflict,
+            NotFoundException => StatusCodes.Status404NotFound,
+            ExpiredException => StatusCodes.Status410Gone,
+            _ => StatusCodes.Status500InternalServerError
+        };
+        ctx.Response.StatusCode = status;
+        ctx.Response.ContentType = "application/problem+json";
+        await ctx.Response.WriteAsJsonAsync(new
+        {
+            type = "about:blank",
+            title = ex.GetType().Name,
+            status,
+            detail = ex.Message
+        });
+    }
+});
 
-app.MapGet("/weatherforecast", () =>
+app.MapPost("/links", async (ICreateShortUrl useCase, CreateShortUrlRequest req, CancellationToken ct) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
+    var result = await useCase.ExecuteAsync(req, ct);
+    return Results.Created($"/links/{result.Code}", result);
 })
-.WithName("GetWeatherForecast");
+    .Produces<CreateShortUrlResult>(StatusCodes.Status201Created)
+    .Produces(StatusCodes.Status400BadRequest)
+    .Produces(StatusCodes.Status409Conflict);
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public partial class Program { }
+
+sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }
