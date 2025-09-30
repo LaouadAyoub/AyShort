@@ -9,6 +9,9 @@ labels: ["feature","slice"]
 ## User Story
 As a <user>, I can <capability> so that <value>.
 
+## Business perspective
+- Explain the feaure from a business perspective (What it does, Why it matters, Business value, difference cases)
+
 ## Scope
 - Inbound:
 - Core Ports:

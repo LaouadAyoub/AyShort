@@ -16,4 +16,16 @@ public sealed class InMemoryShortUrlRepository : IShortUrlRepository
         _store.TryAdd(link.Code.Value, link);
         return Task.CompletedTask;
     }
+
+    public Task<ShortUrl?> GetByCodeAsync(string code, CancellationToken ct = default)
+    {
+        _store.TryGetValue(code, out var shortUrl);
+        return Task.FromResult(shortUrl);
+    }
+
+    public Task UpdateAsync(ShortUrl link, CancellationToken ct = default)
+    {
+        _store.AddOrUpdate(link.Code.Value, link, (_, _) => link);
+        return Task.CompletedTask;
+    }
 }

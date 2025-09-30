@@ -5,6 +5,8 @@ using Core.Application.Ports.Out;
 using Core.Application.Services;
 using Core.Domain.Exceptions;
 using Adapters.Out.Persistence.InMemory;
+using Adapters.Out.Time;
+using Adapters.Out.Codes;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,16 +15,18 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddSingleton(new ShortUrlOptions
 {
-    BaseUrl = builder.Configuration["Shortener:BaseUrl"] ?? "http://localhost:5000",
+    BaseUrl = builder.Configuration["Shortener:BaseUrl"] ?? "http://localhost:5142",
     MinTtlMinutes = 1,
     MaxTtlDays = 365,
     CodeLength = 7
 });
 
-builder.Services.AddSingleton<IClock>(new SystemClock());
+builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
 builder.Services.AddSingleton<IShortUrlRepository, InMemoryShortUrlRepository>();
+builder.Services.AddSingleton<ICacheStore, InMemoryCacheStore>();
 builder.Services.AddSingleton<ICreateShortUrl, CreateShortUrlService>();
+builder.Services.AddSingleton<IResolveShortUrl, ResolveShortUrlService>();
 
 var app = builder.Build();
 
@@ -63,8 +67,15 @@ app.MapPost("/links", async (ICreateShortUrl useCase, CreateShortUrlRequest req,
     .Produces(StatusCodes.Status400BadRequest)
     .Produces(StatusCodes.Status409Conflict);
 
+app.MapGet("/{code}", async (IResolveShortUrl useCase, string code, CancellationToken ct) =>
+{
+    var result = await useCase.ExecuteAsync(new ResolveShortUrlRequest(code), ct);
+    return Results.Redirect(result.OriginalUrl, permanent: false);
+})
+    .Produces(StatusCodes.Status302Found)
+    .Produces(StatusCodes.Status404NotFound)
+    .Produces(StatusCodes.Status410Gone);
+
 app.Run();
 
 public partial class Program { }
-
-sealed class SystemClock : IClock { public DateTimeOffset UtcNow => DateTimeOffset.UtcNow; }

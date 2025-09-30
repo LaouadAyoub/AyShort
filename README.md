@@ -5,8 +5,8 @@
 A small URL shortener built with **Hexagonal Architecture** and **vertical slices**.
 
 ## Endpoints (V1)
-- POST /links → create short link
-- GET /{code} → redirect
+- POST /links → create short link ✅ Slice 1 
+- GET /{code} → redirect ✅ Slice 2 
 - GET /links/{code}/stats → basic stats
 
 ---
@@ -27,6 +27,26 @@ CreateShortUrl (Use Case)
 	│  IShortUrlRepository.Add(new ShortUrl)
 	▼
 Response → 201 { code, shortUrl }
+```
+
+## Resolve Flow (Slice 2)
+
+```text
+Client
+	│  GET /{code}
+	▼
+Web API (Inbound Adapter)
+	│  calls IResolveShortUrl
+	▼
+ResolveShortUrl (Use Case)
+	│  ICacheStore.Get(code)      ── cache hit? → return redirect
+	│  IShortUrlRepository.GetByCode(code)
+	│  if not found → 404
+	│  if expired → 410
+	│  ++ClicksCount; LastAccessAt = now; UpdateAsync
+	│  ICacheStore.Set(code → originalUrl, 24h TTL)
+	▼
+Response → 302 Redirect Location: originalUrl
 ```
 
 ### Example Request

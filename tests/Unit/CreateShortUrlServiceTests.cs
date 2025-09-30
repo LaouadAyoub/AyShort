@@ -10,8 +10,28 @@ file sealed class FakeClock : IClock { public DateTimeOffset UtcNow { get; set; 
 file sealed class FakeRepo : IShortUrlRepository
 {
     private readonly HashSet<string> _codes = new();
+    private readonly Dictionary<string, ShortUrl> _links = new();
+    
     public Task<bool> CodeExistsAsync(string code, CancellationToken ct = default) => Task.FromResult(_codes.Contains(code));
-    public Task AddAsync(ShortUrl link, CancellationToken ct = default) { _codes.Add(link.Code.Value); return Task.CompletedTask; }
+    
+    public Task AddAsync(ShortUrl link, CancellationToken ct = default) 
+    { 
+        _codes.Add(link.Code.Value); 
+        _links[link.Code.Value] = link;
+        return Task.CompletedTask; 
+    }
+    
+    public Task<ShortUrl?> GetByCodeAsync(string code, CancellationToken ct = default)
+    {
+        _links.TryGetValue(code, out var link);
+        return Task.FromResult(link);
+    }
+    
+    public Task UpdateAsync(ShortUrl link, CancellationToken ct = default)
+    {
+        _links[link.Code.Value] = link;
+        return Task.CompletedTask;
+    }
 }
 file sealed class FakeGen : ICodeGenerator { public string Generate(int length = 7) => new('a', length); }
 

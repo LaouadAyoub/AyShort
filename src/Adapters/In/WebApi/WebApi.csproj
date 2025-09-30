@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\Out\Cache.Redis\Cache.Redis.csproj" />
     <ProjectReference Include="..\..\Out\Codes\Codes.csproj" />
     <ProjectReference Include="..\..\Out\Persistence.InMemory\Persistence.InMemory.csproj" />
+    <ProjectReference Include="..\..\Out\Time\Time.csproj" />
   </ItemGroup>
 
 </Project>
