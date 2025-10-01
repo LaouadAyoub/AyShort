@@ -1,5 +1,7 @@
 # AyShort
 
+![CI](https://github.com/LaouadAyoub/AyShort/actions/workflows/ci.yml/badge.svg)
+
 A small URL shortener built with **Hexagonal Architecture** and **vertical slices**.
 
 ## Endpoints (V1)
