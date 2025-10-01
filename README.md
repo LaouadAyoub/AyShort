@@ -149,6 +149,32 @@ Each feature is implemented end-to-end, respecting boundaries and keeping change
 
 ---
 
+## Persistence (Slice 4: SQL)
+
+AyShort uses EF Core for SQL persistence (PostgreSQL recommended). The SQL adapter is isolated in `Adapters/Out/Persistence.Sql`.
+
+**Hexagonal boundaries:** Core has no framework dependencies. All infrastructure (EF, Redis, DI) lives in Adapters.
+
+**Connection string:**
+- Use placeholders in config files (`appsettings.json`, `appsettings.Development.json`).
+- Supply real credentials via environment variables or .NET User Secrets (local dev only).
+- Never commit secrets to source control.
+
+**Migrations:**
+Run EF Core migrations from the SQL adapter:
+```powershell
+dotnet ef migrations add <Name> --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
+dotnet ef database update --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
+```
+
+**Testing:**
+Unit tests cover use cases in Core. Integration tests verify endpoint contracts and persistence.
+
+**Vertical slice delivery:**
+Each feature is implemented end-to-end, respecting boundaries and keeping changes minimal.
+
+---
+
 ## Integration Tests (Isolated Test Database)
 
 Integration tests run against a real PostgreSQL database instance separate from the dev database to avoid polluting local data.

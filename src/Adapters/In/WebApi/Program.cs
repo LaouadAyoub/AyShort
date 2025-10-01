@@ -5,8 +5,10 @@ using Core.Application.Ports.Out;
 using Core.Application.Services;
 using Core.Domain.Exceptions;
 using Adapters.Out.Persistence.InMemory;
+using Adapters.Out.Persistence.Sql;
 using Adapters.Out.Time;
 using Adapters.Out.Codes;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,15 +23,28 @@ builder.Services.AddSingleton(new ShortUrlOptions
     CodeLength = 7
 });
 
+// Add PostgreSQL database
+builder.Services.AddDbContext<AyShortDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
-builder.Services.AddSingleton<IShortUrlRepository, InMemoryShortUrlRepository>();
+// Switch from InMemory to SQL repository
+builder.Services.AddScoped<IShortUrlRepository, SqlShortUrlRepository>();
 builder.Services.AddSingleton<ICacheStore, InMemoryCacheStore>();
-builder.Services.AddSingleton<ICreateShortUrl, CreateShortUrlService>();
-builder.Services.AddSingleton<IResolveShortUrl, ResolveShortUrlService>();
-builder.Services.AddSingleton<IGetStats, GetStatsService>();
+// Services that use repository must also be scoped
+builder.Services.AddScoped<ICreateShortUrl, CreateShortUrlService>();
+builder.Services.AddScoped<IResolveShortUrl, ResolveShortUrlService>();
+builder.Services.AddScoped<IGetStats, GetStatsService>();
 
 var app = builder.Build();
+
+// Apply migrations automatically on startup
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<AyShortDbContext>();
+    context.Database.Migrate();
+}
 
 app.UseSwagger();
 app.UseSwaggerUI();
