@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using Core.Application.Ports.Out;
 
-namespace Adapters.Out.Persistence.InMemory;
+namespace Adapters.Out.Codes;
 
 public sealed class Base62CodeGenerator : ICodeGenerator
 {

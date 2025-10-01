@@ -30,4 +30,12 @@ public sealed class ShortUrl
 
         return new ShortUrl(code, url, now, expiration);
     }
+
+    public void RecordAccess(IClock clock)
+    {
+        ClicksCount++;
+        LastAccessAt = clock.UtcNow;
+    }
+
+    public bool IsExpired(IClock clock) => Expiration.HasValue && clock.UtcNow > Expiration.Value;
 }
