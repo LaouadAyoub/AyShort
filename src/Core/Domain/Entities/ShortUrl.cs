@@ -24,7 +24,7 @@ public sealed class ShortUrl
 
     public static ShortUrl Create(ShortCode code, OriginalUrl url, DateTimeOffset? expiration, IClock clock)
     {
-        var now = clock.UtcNow;
+        DateTimeOffset now = clock.UtcNow;
         if (expiration.HasValue && expiration.Value <= now)
             throw new ValidationException("Expiration must be in the future.");
 

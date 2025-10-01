@@ -27,6 +27,7 @@ builder.Services.AddSingleton<IShortUrlRepository, InMemoryShortUrlRepository>()
 builder.Services.AddSingleton<ICacheStore, InMemoryCacheStore>();
 builder.Services.AddSingleton<ICreateShortUrl, CreateShortUrlService>();
 builder.Services.AddSingleton<IResolveShortUrl, ResolveShortUrlService>();
+builder.Services.AddSingleton<IGetStats, GetStatsService>();
 
 var app = builder.Build();
 
@@ -75,6 +76,14 @@ app.MapGet("/{code}", async (IResolveShortUrl useCase, string code, Cancellation
     .Produces(StatusCodes.Status302Found)
     .Produces(StatusCodes.Status404NotFound)
     .Produces(StatusCodes.Status410Gone);
+
+app.MapGet("/links/{code}/stats", async (IGetStats useCase, string code, CancellationToken ct) =>
+{
+    var result = await useCase.ExecuteAsync(new GetStatsRequest(code), ct);
+    return Results.Ok(result);
+})
+    .Produces<GetStatsResult>(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status404NotFound);
 
 app.Run();
 
