@@ -8,12 +8,30 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres-test:
+        image: postgres:16
+        ports:
+          - 5433:5432
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: ayshort_test
+        # Minimal options (omit health flags that were misparsed by service runner)
+        options: >-
+          --health-cmd="echo ok"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      # Mapped by TestDatabaseInitializer to ConnectionStrings:Default
+      TEST_DB_CONNECTION: Host=localhost;Port=5433;Database=ayshort_test;User Id=test;Password=test;Include Error Detail=true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Optional but speeds things up
       - name: Cache NuGet
         uses: actions/cache@v4
         with:
@@ -33,5 +51,25 @@ jobs:
       - name: Build (Release)
         run: dotnet build --no-restore -c Release
 
-      - name: Test (all)
-        run: dotnet test --no-build -c Release --verbosity normal
+      - name: Wait for Postgres readiness
+        run: |
+          for i in {1..30}; do
+            docker exec $(docker ps --filter 'ancestor=postgres:16' --format '{{.ID}}') pg_isready -U test -d ayshort_test && echo "Postgres is ready" && exit 0
+            echo "Waiting for Postgres ($i)..."; sleep 2;
+          done
+            echo "Postgres did not become ready in time" >&2
+            docker logs $(docker ps --filter 'ancestor=postgres:16' --format '{{.ID}}') || true
+            exit 1
+
+      - name: Run Unit Tests (fast fail)
+        run: dotnet test --no-build -c Release --filter "FullyQualifiedName~Unit" --verbosity normal
+
+      - name: Run Integration Tests
+        run: |
+          echo "Running integration tests against $TEST_DB_CONNECTION" | sed 's/Password=[^;]*/Password=****/'
+          dotnet test --no-build -c Release --filter "FullyQualifiedName~Integration" --verbosity normal
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "Unit & Integration tests completed." 
