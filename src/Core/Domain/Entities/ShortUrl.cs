@@ -22,6 +22,11 @@ public sealed class ShortUrl
         Expiration = expiration;
     }
 
+    // Parameterless constructor for EF Core - not intended for domain use
+    #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor
+    private ShortUrl() { }
+    #pragma warning restore CS8618
+
     public static ShortUrl Create(ShortCode code, OriginalUrl url, DateTimeOffset? expiration, IClock clock)
     {
         DateTimeOffset now = clock.UtcNow;
