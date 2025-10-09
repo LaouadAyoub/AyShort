@@ -11,6 +11,7 @@ public sealed class CreateShortUrlService(
     IShortUrlRepository repo,
     ICodeGenerator generator,
     IClock clock,
+    ICacheStore cache,
     ShortUrlOptions options) : ICreateShortUrl
 {
     public async Task<CreateShortUrlResult> ExecuteAsync(CreateShortUrlRequest request, CancellationToken ct = default)
@@ -45,6 +46,9 @@ public sealed class CreateShortUrlService(
 
         var entity = ShortUrl.Create(code, url, request.Expiration, clock);
         await repo.AddAsync(entity, ct);
+
+        // Warm cache after successful creation
+        await cache.SetAsync(code.Value, entity.OriginalUrl.Value, TimeSpan.FromHours(24), ct);
 
         var baseUrl = options.BaseUrl.TrimEnd('/');
         var shortUrl = $"{baseUrl}/{code.Value}";

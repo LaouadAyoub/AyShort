@@ -80,9 +80,13 @@ External Systems (Postgres/SQLite, Redis)
   - Implements `IShortUrlRepository`.  
   - Enforces unique index on `Code`.  
   - Translates DB uniqueness violations to a domain conflict.
-- **Cache.Redis (StackExchange.Redis)**  
+- **Cache.Redis (StackExchange.Redis)** ✅ Slice 5  
   - Implements `ICacheStore` with **cache-aside** and **negative caching**.  
-  - Key: `link:{code}` → value: `{ originalUrl, expiration }` (+ TTL).
+  - Key: `{code}` → value: `{originalUrl}` or `"__NOT_FOUND__"` (negative marker).
+  - Positive cache TTL: 24 hours (configurable via `Redis:DefaultTtlSeconds`).
+  - Negative cache TTL: 60 seconds (configurable via `Redis:NegativeTtlSeconds`).
+  - Graceful degradation: cache failures don't break requests (logs error, returns null).
+  - Fallback: if Redis not configured, uses in-memory `InMemoryCacheStore`.
 - **Codes**  
   - Implements `ICodeGenerator` (e.g., Random Base62).
 
@@ -164,7 +168,7 @@ Indexes:
 
 ## 7) Sequence Diagrams (ASCII)
 
-### 7.1 Create
+### 7.1 Create (with Cache Warming - Slice 5)
 
 ```
 Client
@@ -177,12 +181,12 @@ CreateShortUrl (Use Case)
   │  validate URL/alias/expiration
   │  if no alias → ICodeGenerator.Generate()
   │  IShortUrlRepository.Add(new ShortUrl)
-  │  ICacheStore.Set(code → originalUrl, TTL)
+  │  ICacheStore.Set(code → originalUrl, 24h TTL)  ← Cache warming
   ▼
 Response → 201 { code, shortUrl }
 ```
 
-### 7.2 Resolve
+### 7.2 Resolve (with Redis + Negative Caching - Slice 5)
 
 ```
 Client
@@ -192,12 +196,29 @@ Web API (Inbound Adapter)
   │  calls IResolveShortUrl
   ▼
 ResolveShortUrl (Use Case)
-  │  ICacheStore.Get(code)      ── cache hit? → return redirect
-  │  IShortUrlRepository.FindByCode(code)
-  │  if not found → negative cache (short TTL) → 404
-  │  if expired → 410
-  │  ++ClicksCount; LastAccessAt = now; save
-  │  ICacheStore.Set(code → originalUrl, TTL)
+  │  ICacheStore.Get(code)
+  │  │
+  │  ├─ if value == "__NOT_FOUND__" → NotFoundException (404) [negative cache hit]
+  │  │
+  │  ├─ if cache hit (URL found):
+  │  │  ├─ IShortUrlRepository.GetByCode(code)  [to update clicks]
+  │  │  ├─ if found & not expired:
+  │  │  │  ├─ RecordAccess() → ++clicks, lastAccess = now
+  │  │  │  └─ UpdateAsync()
+  │  │  └─ return redirect with cached URL
+  │  │
+  │  └─ if cache miss:
+  │     ├─ IShortUrlRepository.GetByCode(code)
+  │     ├─ if not found:
+  │     │  ├─ ICacheStore.Set(code → "__NOT_FOUND__", 60s TTL)  ← negative cache
+  │     │  └─ NotFoundException (404)
+  │     ├─ if expired:
+  │     │  ├─ ICacheStore.Set(code → "__NOT_FOUND__", 60s TTL)
+  │     │  └─ ExpiredException (410)
+  │     ├─ RecordAccess() → ++clicks, lastAccess = now
+  │     ├─ UpdateAsync()
+  │     ├─ ICacheStore.Set(code → originalUrl, 24h TTL)  ← positive cache
+  │     └─ return redirect
   ▼
 Response → 302/307 Location: originalUrl
 ```
@@ -257,17 +278,18 @@ Response → 200 { createdAt, expiration, clicks, lastAccess }
 
 * `Shortener:BaseUrl = https://sho.rt`
 * `ConnectionStrings:Default = "Host=...;Database=...;User Id=...;Password=..."`
-* `Redis:Connection = "localhost:6379"`
-* `Cache:DefaultTtlSeconds = 86400`
-* `Cache:NegativeTtlSeconds = 60`
+* `Redis:Connection = "localhost:6379"`  ✅ Slice 5
+* `Redis:DefaultTtlSeconds = 86400` (24 hours)  ✅ Slice 5
+* `Redis:NegativeTtlSeconds = 60` (1 minute)  ✅ Slice 5
 
 ---
 
 ## 12) Run Modes
 
-* **Local (dev)**: Web API + SQLite (file) + Redis (Docker) or in-memory cache during early slices.
+* **Local (dev)**: Web API + PostgreSQL (Docker) + Redis (Docker)  ✅ Slice 5
 * **CI (tests)**: spin Postgres/Redis via Docker; run unit + integration tests.
 * **Demo/Prod (optional)**: Azure App Service + managed Postgres/Redis.
+* **Fallback**: If Redis not configured, uses in-memory cache (single instance only).
 
 ---
 

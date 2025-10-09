@@ -8,7 +8,9 @@ using Adapters.Out.Persistence.InMemory;
 using Adapters.Out.Persistence.Sql;
 using Adapters.Out.Time;
 using Adapters.Out.Codes;
+using Adapters.Out.Cache.Redis;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,7 +22,8 @@ builder.Services.AddSingleton(new ShortUrlOptions
     BaseUrl = builder.Configuration["Shortener:BaseUrl"] ?? "http://localhost:5142",
     MinTtlMinutes = 1,
     MaxTtlDays = 365,
-    CodeLength = 7
+    CodeLength = 7,
+    NegativeCacheTtlSeconds = 60
 });
 
 // Add PostgreSQL database
@@ -31,7 +34,30 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ICodeGenerator, Base62CodeGenerator>();
 // Switch from InMemory to SQL repository
 builder.Services.AddScoped<IShortUrlRepository, SqlShortUrlRepository>();
-builder.Services.AddSingleton<ICacheStore, InMemoryCacheStore>();
+
+// Configure cache: Use Redis if configured, otherwise fallback to InMemory
+var redisConnection = builder.Configuration["Redis:Connection"];
+if (!string.IsNullOrWhiteSpace(redisConnection))
+{
+    // Redis is configured - use it
+    var redis = ConnectionMultiplexer.Connect(redisConnection);
+    builder.Services.AddSingleton<IConnectionMultiplexer>(redis);
+    
+    var redisOptions = new RedisCacheOptions
+    {
+        Connection = redisConnection,
+        DefaultTtlSeconds = builder.Configuration.GetValue<int>("Redis:DefaultTtlSeconds", 86400),
+        NegativeTtlSeconds = builder.Configuration.GetValue<int>("Redis:NegativeTtlSeconds", 60)
+    };
+    builder.Services.AddSingleton(redisOptions);
+    builder.Services.AddSingleton<ICacheStore, RedisCacheStore>();
+}
+else
+{
+    // No Redis configured - use in-memory cache as fallback
+    builder.Services.AddSingleton<ICacheStore, InMemoryCacheStore>();
+}
+
 // Services that use repository must also be scoped
 builder.Services.AddScoped<ICreateShortUrl, CreateShortUrlService>();
 builder.Services.AddScoped<IResolveShortUrl, ResolveShortUrlService>();

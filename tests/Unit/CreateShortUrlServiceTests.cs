@@ -7,6 +7,12 @@ using Core.Domain.Exceptions;
 using Xunit;
 
 file sealed class FakeClock : IClock { public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.Parse("2025-01-01T00:00:00Z"); }
+file sealed class FakeCache : ICacheStore
+{
+    private readonly Dictionary<string, string> _cache = new();
+    public Task<string?> GetAsync(string key, CancellationToken ct = default) => Task.FromResult(_cache.GetValueOrDefault(key));
+    public Task SetAsync(string key, string value, TimeSpan? ttl = null, CancellationToken ct = default) { _cache[key] = value; return Task.CompletedTask; }
+}
 file sealed class FakeRepo : IShortUrlRepository
 {
     private readonly HashSet<string> _codes = new();
@@ -40,7 +46,7 @@ public class CreateShortUrlServiceTests
     [Fact]
     public async Task Creates_with_generated_code()
     {
-        var svc = new CreateShortUrlService(new FakeRepo(), new FakeGen(), new FakeClock(), new ShortUrlOptions{ BaseUrl="http://x" });
+        var svc = new CreateShortUrlService(new FakeRepo(), new FakeGen(), new FakeClock(), new FakeCache(), new ShortUrlOptions{ BaseUrl="http://x" });
         var res = await svc.ExecuteAsync(new CreateShortUrlRequest("https://example.com"));
         Assert.Equal("aaaaaaa", res.Code);
         Assert.Equal("http://x/aaaaaaa", res.ShortUrl);
@@ -49,7 +55,7 @@ public class CreateShortUrlServiceTests
     [Fact]
     public async Task Rejects_invalid_scheme()
     {
-        var svc = new CreateShortUrlService(new FakeRepo(), new FakeGen(), new FakeClock(), new ShortUrlOptions());
+        var svc = new CreateShortUrlService(new FakeRepo(), new FakeGen(), new FakeClock(), new FakeCache(), new ShortUrlOptions());
         await Assert.ThrowsAsync<ValidationException>(() => svc.ExecuteAsync(new CreateShortUrlRequest("ftp://x")));
     }
 }
