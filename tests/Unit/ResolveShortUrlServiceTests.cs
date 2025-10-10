@@ -47,7 +47,7 @@ public class ResolveShortUrlServiceTests
         var cache = new FakeCache();
         await cache.SetAsync("abc123", "https://example.com");
         
-        var svc = new ResolveShortUrlService(cache, new FakeRepo(), new FakeClock());
+        var svc = new ResolveShortUrlService(cache, new FakeRepo(), new FakeClock(), new ShortUrlOptions());
         var result = await svc.ExecuteAsync(new ResolveShortUrlRequest("abc123"));
         
         Assert.Equal("https://example.com", result.OriginalUrl);
@@ -68,7 +68,7 @@ public class ResolveShortUrlServiceTests
             clock);
         await repo.AddAsync(shortUrl);
         
-        var svc = new ResolveShortUrlService(cache, repo, clock);
+        var svc = new ResolveShortUrlService(cache, repo, clock, new ShortUrlOptions());
         var result = await svc.ExecuteAsync(new ResolveShortUrlRequest("abc123"));
         
         Assert.Equal("https://example.com/", result.OriginalUrl);
@@ -80,9 +80,48 @@ public class ResolveShortUrlServiceTests
     [Fact]
     public async Task Unknown_code_throws_not_found()
     {
-        var svc = new ResolveShortUrlService(new FakeCache(), new FakeRepo(), new FakeClock());
+        var svc = new ResolveShortUrlService(new FakeCache(), new FakeRepo(), new FakeClock(), new ShortUrlOptions());
         await Assert.ThrowsAsync<NotFoundException>(() => 
             svc.ExecuteAsync(new ResolveShortUrlRequest("unknown")));
+    }
+    
+    [Fact]
+    public async Task Unknown_code_creates_negative_cache_entry()
+    {
+        var cache = new FakeCache();
+        var repo = new FakeRepo();
+        var clock = new FakeClock();
+        
+        var svc = new ResolveShortUrlService(cache, repo, clock, new ShortUrlOptions());
+        
+        // First request - throws NotFoundException and caches negative marker
+        await Assert.ThrowsAsync<NotFoundException>(() => 
+            svc.ExecuteAsync(new ResolveShortUrlRequest("notfound")));
+        
+        // Verify negative cache marker was stored
+        var cached = await cache.GetAsync("notfound");
+        Assert.Equal("__NOT_FOUND__", cached);
+    }
+    
+    [Fact]
+    public async Task Negative_cache_hit_throws_without_repo_access()
+    {
+        var cache = new FakeCache();
+        // Pre-populate with negative cache marker
+        await cache.SetAsync("notfound", "__NOT_FOUND__");
+        
+        var repo = new FakeRepo();
+        var clock = new FakeClock();
+        
+        var svc = new ResolveShortUrlService(cache, repo, clock, new ShortUrlOptions());
+        
+        // Should throw immediately from cache, without hitting repo
+        await Assert.ThrowsAsync<NotFoundException>(() => 
+            svc.ExecuteAsync(new ResolveShortUrlRequest("notfound")));
+        
+        // Verify repo was never accessed (it's still empty)
+        var repoCheck = await repo.GetByCodeAsync("notfound");
+        Assert.Null(repoCheck);
     }
 
     [Fact]
@@ -103,7 +142,7 @@ public class ResolveShortUrlServiceTests
         // Advance time past expiration
         clock.UtcNow = DateTimeOffset.Parse("2025-01-03T00:00:00Z");
         
-        var svc = new ResolveShortUrlService(cache, repo, clock);
+        var svc = new ResolveShortUrlService(cache, repo, clock, new ShortUrlOptions());
         await Assert.ThrowsAsync<ExpiredException>(() => 
             svc.ExecuteAsync(new ResolveShortUrlRequest("expired")));
     }
@@ -122,7 +161,7 @@ public class ResolveShortUrlServiceTests
             clock);
         await repo.AddAsync(shortUrl);
         
-        var svc = new ResolveShortUrlService(cache, repo, clock);
+        var svc = new ResolveShortUrlService(cache, repo, clock, new ShortUrlOptions());
         await svc.ExecuteAsync(new ResolveShortUrlRequest("test"));
         
         var updated = await repo.GetByCodeAsync("test");

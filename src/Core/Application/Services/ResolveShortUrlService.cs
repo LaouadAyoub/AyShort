@@ -9,14 +9,24 @@ namespace Core.Application.Services;
 public sealed class ResolveShortUrlService(
     ICacheStore cache,
     IShortUrlRepository repo,
-    IClock clock) : IResolveShortUrl
+    IClock clock,
+    ShortUrlOptions options) : IResolveShortUrl
 {
+    private const string NegativeCacheMarker = "__NOT_FOUND__";
+
     public async Task<ResolveShortUrlResult> ExecuteAsync(ResolveShortUrlRequest request, CancellationToken ct = default)
     {
         var code = ShortCode.Create(request.Code);
 
         // Try cache first for the URL
         var cachedUrl = await cache.GetAsync(code.Value, ct);
+        
+        // Check for negative cache marker (indicates previously not found)
+        if (cachedUrl == NegativeCacheMarker)
+        {
+            throw new NotFoundException("Short URL not found.");
+        }
+        
         if (!string.IsNullOrEmpty(cachedUrl))
         {
             // Cache hit - still need to record access for accurate analytics
@@ -34,12 +44,16 @@ public sealed class ResolveShortUrlService(
         var entity = await repo.GetByCodeAsync(code.Value, ct);
         if (entity == null)
         {
+            // Store negative cache marker with short TTL to prevent repeated DB lookups
+            await cache.SetAsync(code.Value, NegativeCacheMarker, TimeSpan.FromSeconds(options.NegativeCacheTtlSeconds), ct);
             throw new NotFoundException("Short URL not found.");
         }
 
         // Check if expired
         if (entity.IsExpired(clock))
         {
+            // Don't cache expired links for long - use negative cache TTL
+            await cache.SetAsync(code.Value, NegativeCacheMarker, TimeSpan.FromSeconds(options.NegativeCacheTtlSeconds), ct);
             throw new ExpiredException("Short URL has expired.");
         }
 

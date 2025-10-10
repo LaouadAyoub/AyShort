@@ -8,6 +8,8 @@ A small URL shortener built with **Hexagonal Architecture** and **vertical slice
 - POST /links → create short link ✅ Slice 1 
 - GET /{code} → redirect ✅ Slice 2 
 - GET /links/{code}/stats → basic stats ✅ Slice 3
+- Persistence: EF Core + PostgreSQL ✅ Slice 4
+- Cache: Redis (with fallback to in-memory) ✅ Slice 5
 
 ---
 
@@ -25,11 +27,12 @@ CreateShortUrl (Use Case)
 	│  if no alias → ICodeGenerator.Generate()
 	│  retry generation until unique (bounded)
 	│  IShortUrlRepository.Add(new ShortUrl)
+	│  ICacheStore.Set(code → url, 24h TTL) [Cache warming]
 	▼
 Response → 201 { code, shortUrl }
 ```
 
-## Resolve Flow (Slice 2)
+## Resolve Flow (Slice 2 + Slice 5: Redis Cache)
 
 ```text
 Client
@@ -39,12 +42,24 @@ Web API (Inbound Adapter)
 	│  calls IResolveShortUrl
 	▼
 ResolveShortUrl (Use Case)
-	│  ICacheStore.Get(code)      ── cache hit? → return redirect
-	│  IShortUrlRepository.GetByCode(code)
-	│  if not found → 404
-	│  if expired → 410
-	│  ++ClicksCount; LastAccessAt = now; UpdateAsync
-	│  ICacheStore.Set(code → originalUrl, 24h TTL)
+	│  ICacheStore.Get(code)
+	│  │
+	│  ├─ If negative marker ("__NOT_FOUND__") → throw NotFoundException (404)
+	│  │
+	│  ├─ If cache hit (URL found):
+	│  │  ├─ Get entity from DB (to update clicks)
+	│  │  ├─ ++ClicksCount; LastAccessAt = now
+	│  │  ├─ UpdateAsync
+	│  │  └─ Return cached URL
+	│  │
+	│  └─ If cache miss:
+	│     ├─ IShortUrlRepository.GetByCode(code)
+	│     ├─ If not found → cache negative marker (60s TTL) → 404
+	│     ├─ If expired → cache negative marker (60s TTL) → 410
+	│     ├─ ++ClicksCount; LastAccessAt = now
+	│     ├─ UpdateAsync
+	│     ├─ ICacheStore.Set(code → url, 24h TTL)
+	│     └─ Return URL
 	▼
 Response → 302 Redirect Location: originalUrl
 ```
@@ -149,32 +164,6 @@ Each feature is implemented end-to-end, respecting boundaries and keeping change
 
 ---
 
-## Persistence (Slice 4: SQL)
-
-AyShort uses EF Core for SQL persistence (PostgreSQL recommended). The SQL adapter is isolated in `Adapters/Out/Persistence.Sql`.
-
-**Hexagonal boundaries:** Core has no framework dependencies. All infrastructure (EF, Redis, DI) lives in Adapters.
-
-**Connection string:**
-- Use placeholders in config files (`appsettings.json`, `appsettings.Development.json`).
-- Supply real credentials via environment variables or .NET User Secrets (local dev only).
-- Never commit secrets to source control.
-
-**Migrations:**
-Run EF Core migrations from the SQL adapter:
-```powershell
-dotnet ef migrations add <Name> --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
-dotnet ef database update --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
-```
-
-**Testing:**
-Unit tests cover use cases in Core. Integration tests verify endpoint contracts and persistence.
-
-**Vertical slice delivery:**
-Each feature is implemented end-to-end, respecting boundaries and keeping changes minimal.
-
----
-
 ## Integration Tests (Isolated Test Database)
 
 Integration tests run against a real PostgreSQL database instance separate from the dev database to avoid polluting local data.
@@ -231,4 +220,76 @@ Tests are split so unit tests run first (fast feedback) followed by integration 
 ## Run Dev Infra
 ```bash
 docker compose up -d
+```
+
+---
+
+## 📚 Documentation
+
+- **[Architecture](docs/02-architecture.md)** - Hexagonal design, flows, and technical decisions
+- **[Product Brief](docs/01-product-brief.md)** - Goals, features, and requirements
+- **[Roadmap](docs/03-roadmap.md)** - Vertical slices and implementation progress
+- **[Testing Redis Cache](docs/04-testing-redis.md)** - Complete guide to verify Redis is working
+- **[Redis Monitoring Quick Start](docs/REDIS-MONITORING.md)** - Commands and tools for monitoring cache
+
+---
+
+## 🧪 Testing Redis Cache
+
+### Quick Check
+```powershell
+# Is Redis working?
+docker exec ayshort-redis redis-cli PING
+# Should return: PONG
+
+# See cached keys
+docker exec ayshort-redis redis-cli KEYS "*"
+
+# Watch cache in real-time
+docker exec -it ayshort-redis redis-cli MONITOR
+```
+
+### Visual Monitoring
+- **RedisInsight** (recommended): https://redis.io/insight/
+- **Redis Commander**: `docker run -d -p 8081:8081 -e REDIS_HOSTS=local:host.docker.internal:6379 rediscommander/redis-commander`
+
+### Test Script
+```powershell
+# Automated test that verifies cache warming, hits, and negative caching
+.\scripts\test-redis-cache.ps1
+```
+
+See **[docs/04-testing-redis.md](docs/04-testing-redis.md)** for detailed testing guide.
+
+---
+
+This starts:
+- **PostgreSQL** (port 5432) - main database
+- **PostgreSQL-test** (port 5433) - isolated test database
+- **Redis** (port 6379) - cache
+
+### Configuration
+
+**Redis Cache (Slice 5):**
+- Configure Redis in `appsettings.json`:
+  ```json
+  "Redis": {
+    "Connection": "localhost:6379",
+    "DefaultTtlSeconds": 86400,  // 24 hours for positive cache
+    "NegativeTtlSeconds": 60      // 1 minute for negative cache (404s)
+  }
+  ```
+- If `Redis:Connection` is not set or Redis is unavailable, the app automatically falls back to in-memory cache
+- **Negative caching:** Unknown codes are cached with `"__NOT_FOUND__"` marker for 60 seconds to prevent repeated DB lookups from brute-force probing
+- **Cache warming:** New short URLs are immediately cached on creation for instant first-resolve
+
+**Database:**
+- Set connection string via environment variable or User Secrets:
+  ```powershell
+  $env:ConnectionStrings__Default = "Host=localhost;Port=5432;Database=ayshort;User Id=ays;Password=ays"
+  ```
+
+**Running the API:**
+```powershell
+dotnet run --project src/Adapters/In/WebApi/WebApi.csproj
 ```
