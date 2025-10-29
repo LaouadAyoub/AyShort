@@ -75,9 +75,27 @@ using (var scope = app.Services.CreateScope())
 app.UseSwagger();
 app.UseSwaggerUI();
 
+// Request logging scope middleware: attaches TraceId to all subsequent logs for this request
 app.Use(async (ctx, next) =>
 {
-    try { await next(); }
+    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+    using (logger.BeginScope(new Dictionary<string, object>
+    {
+        ["TraceId"] = ctx.TraceIdentifier
+    }))
+    {
+        await next();
+    }
+});
+
+// Global error translation middleware: converts ALL exceptions to RFC7807 ProblemDetails
+app.Use(async (ctx, next) =>
+{
+    var logger = ctx.RequestServices.GetRequiredService<ILogger<Program>>();
+    try
+    {
+        await next();
+    }
     catch (DomainException ex)
     {
         var status = ex switch
@@ -88,15 +106,48 @@ app.Use(async (ctx, next) =>
             ExpiredException => StatusCodes.Status410Gone,
             _ => StatusCodes.Status500InternalServerError
         };
+
+        // Choose log level based on domain exception type
+        var level = ex switch
+        {
+            ValidationException => LogLevel.Warning,
+            ConflictException => LogLevel.Warning,
+            NotFoundException => LogLevel.Information,
+            ExpiredException => LogLevel.Information,
+            _ => LogLevel.Error
+        };
+        logger.Log(level, ex, "Domain exception handled: {ExceptionType} status={Status} code={Code?}", ex.GetType().Name, status, (ex as ConflictException)?.Message);
+
         ctx.Response.StatusCode = status;
         ctx.Response.ContentType = "application/problem+json";
-        await ctx.Response.WriteAsJsonAsync(new
+        var problem = new
         {
             type = "about:blank",
             title = ex.GetType().Name,
             status,
-            detail = ex.Message
-        });
+            detail = ex.Message,
+            traceId = ctx.TraceIdentifier,
+            instance = ctx.Request.Path.Value
+        };
+        await ctx.Response.WriteAsJsonAsync(problem);
+    }
+    catch (Exception ex)
+    {
+        // Unexpected exception: always 500, generic title; do not leak internal stack details to client
+        logger.LogError(ex, "Unhandled exception encountered.");
+        const int status = StatusCodes.Status500InternalServerError;
+        ctx.Response.StatusCode = status;
+        ctx.Response.ContentType = "application/problem+json";
+        var problem = new
+        {
+            type = "about:blank",
+            title = "InternalServerError",
+            status,
+            detail = "An unexpected error occurred.",
+            traceId = ctx.TraceIdentifier,
+            instance = ctx.Request.Path.Value
+        };
+        await ctx.Response.WriteAsJsonAsync(problem);
     }
 });
 
