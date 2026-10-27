@@ -264,7 +264,7 @@ See **[docs/04-testing-redis.md](docs/04-testing-redis.md)** for detailed testin
 ---
 
 This starts:
-- **PostgreSQL** (port 5432) - main database
+- **PostgreSQL** (host port 5434) - main database
 - **PostgreSQL-test** (port 5433) - isolated test database
 - **Redis** (port 6379) - cache
 
@@ -286,8 +286,13 @@ This starts:
 **Database:**
 - Set connection string via environment variable or User Secrets:
   ```powershell
-  $env:ConnectionStrings__Default = "Host=localhost;Port=5432;Database=ayshort;User Id=ays;Password=ays"
+  $env:ConnectionStrings__Default = "Host=127.0.0.1;Port=5434;Database=ays;User Id=ays;Password=ays"
   ```
+- For Visual Studio, save the same value in User Secrets:
+  ```powershell
+  dotnet user-secrets set "ConnectionStrings:Default" "Host=127.0.0.1;Port=5434;Database=ays;User Id=ays;Password=ays;Include Error Detail=true" --project src/Adapters/In/WebApi/WebApi.csproj
+  ```
+- The Docker database uses host port 5434 to avoid conflicts with a local PostgreSQL installation on port 5432. After changing the port mapping, run `docker compose up -d postgres` to recreate the container with its existing data volume.
 
 **Running the API:**
 ```powershell
