@@ -1,19 +1,43 @@
 # AyShort frontend — design brief
 
 This file lives at frontend/frontend-design.md, relative to the repository root.
-Version 1.0 — 27 October 2026. Living brief; initial visual choices are provisional.
+Version 1.1 — 27 October 2026. Living brief; portfolio cover adopted as visual reference.
 
 ## Purpose
 A simple, attractive browser interface for AyShort's .NET API.
 The main task is clear: enter a URL, shorten it, then use or copy the result.
 Engineering clarity, usable feedback and thoughtful design matter together.
 
+## Portfolio continuity and visual reference
+The existing portfolio cover is the primary visual reference for AyShort.
+Recruiters should recognise the same project when moving from the portfolio to
+the live application. This direction was chosen by Ayoub on 27 October 2026.
+
+![AyShort portfolio cover](./design/ayshort-portfolio-cover.png)
+
+Reference file: frontend/design/ayshort-portfolio-cover.png. This is a design
+reference, not a required full-page background or a substitute for accessible HTML.
+
+Carry these characteristics into the interface:
+- Warm cream / paper-like background and near-black charcoal text.
+- Muted olive for the primary action and the long-link / short-link motif.
+- Burnt orange as a restrained directional or emphasis accent.
+- A bold sans-serif AyShort title, readable supporting text and generous spacing.
+- Simple rounded line shapes that suggest turning a long path into a short one.
+
+Adapt the cover to an interactive, responsive screen. Keep text as real HTML;
+do not reproduce the cover's oversized typography at the expense of the form.
+Any paper texture should be subtle, optional and decorative. Keep architecture
+and technology captions in the portfolio rather than in the main product flow.
+Choose exact colour tokens during styling and verify contrast for text, controls
+and focus indicators; the cover's colours alone do not establish accessible pairs.
+
 ## Atlas BUILD direction
 Calm structure, warm neutrals, breathable typography, restrained accents.
 Use a warm off-white canvas, dark charcoal text, quiet borders and one prominent
-primary action. Olive and burnt orange can provide character.
-These are AyShort defaults to evaluate on the first screen, not a universal theme
-for every future React project. Avoid ornamental animation and visual clutter.
+primary action. Use the cover's olive and burnt orange for continuity.
+These are AyShort defaults, not a universal theme for every future React project.
+Avoid ornamental animation and visual clutter.
 
 ## First screen
 - Small AyShort wordmark/title and one short explanation.

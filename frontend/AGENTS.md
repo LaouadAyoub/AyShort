@@ -11,6 +11,9 @@ Do not add a dashboard requiring endpoints that do not exist.
 
 ## Read first
 - Read ./frontend-design.md before UI changes.
+- Use ./design/ayshort-portfolio-cover.png as the visual reference: preserve
+  continuity with the portfolio through cream, charcoal, olive and burnt orange,
+  bold typography and generous spacing. Follow the design brief for UI adaptation.
 - Inspect package.json, configuration, existing components and relevant API contracts.
 - Use local guidance for routine work. Consult Notion when the task needs current
   decisions or an explicit refresh; report access gaps rather than inventing content.
