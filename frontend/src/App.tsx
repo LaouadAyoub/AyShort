@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { createShortLink } from './api/links'
+import { createShortLink, LinkApiError } from './api/links'
 import type { CreateShortUrlResult } from './api/links'
 
 function App() {
   const [url, setUrl] = useState('')
   const [result, setResult] = useState<CreateShortUrlResult | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<LinkApiError | null>(null)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -20,7 +20,7 @@ function App() {
       const createdLink = await createShortLink(url)
       setResult(createdLink)
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Something went wrong. Please try again.')
+      setError(error instanceof LinkApiError ? error : new LinkApiError('Something went wrong. Please try again.'))
     } finally {
       setIsSubmitting(false)
     }
@@ -42,6 +42,8 @@ function App() {
           type="url"
           required
           disabled={isSubmitting}
+          aria-invalid={error?.status === 400 || undefined}
+          aria-describedby={error ? 'link-error' : undefined}
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           placeholder="https://example.com/your-long-link"
@@ -54,7 +56,7 @@ function App() {
           {isSubmitting ? 'Shortening…' : 'Shorten'}
         </button>
         {isSubmitting && <p role="status">Creating your short link…</p>}
-        {error && <p role="alert">{error}</p>}
+        {error && <p id="link-error" role="alert">{error.message}</p>}
       </form>
       {result && (
         <section className="mt-8 rounded-lg border border-border bg-surface p-6" aria-labelledby="result-heading">

@@ -19,6 +19,10 @@ Open the URL Vite prints. The form sends `POST /api/links`; Vite's development
 proxy forwards it to `http://localhost:5142/links`. Keep both servers running.
 If the API port changes, update `server.proxy` in `vite.config.ts`.
 
+`npm test` runs API-helper tests using Node's built-in test runner and TypeScript
+stripping (verified with Node 22.14). These tests simulate HTTP and network responses;
+run both servers to check the real browser-to-backend flow as well.
+
 `npm run lint` checks code quality; `npm run build` checks TypeScript and builds
 the production bundle. The Vite proxy only runs during development. A production
 host must route `/api` requests to the backend with the prefix removed, or the
