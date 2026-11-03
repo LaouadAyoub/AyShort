@@ -1,300 +1,109 @@
-# AyShort
+# AyShort — .NET API & React interface
 
-![CI](https://github.com/LaouadAyoub/AyShort/actions/workflows/ci.yml/badge.svg)
+Create a short link, share it, and follow it to the original destination. AyShort combines an ASP.NET Core API with a React/TypeScript interface, backed by PostgreSQL.
 
-A small URL shortener built with **Hexagonal Architecture** and **vertical slices**.
+**[Try the live app](https://app.ayshort.cc/)** · **[Explore the API](https://ayshort.cc/swagger)** · **[Technical guide](docs/technical-guide.md)**
 
-## Endpoints (V1)
-- POST /links → create short link ✅ Slice 1 
-- GET /{code} → redirect ✅ Slice 2 
-- GET /links/{code}/stats → basic stats ✅ Slice 3
-- Persistence: EF Core + PostgreSQL ✅ Slice 4
-- Cache: Redis (with fallback to in-memory) ✅ Slice 5
+![AyShort cover: a long URL becomes a short link, with .NET and React technologies listed below.](docs/images/ayshort-cover.png)
 
----
+## What you can do
 
-## Create Flow (Slice 1)
+Open the [live app](https://app.ayshort.cc/), enter an HTTP or HTTPS URL, and select **Shorten**. The interface displays a usable link such as `https://ayshort.cc/abc1234`, with loading feedback and messages for invalid input or failed requests.
 
-```text
-Client
-	│  POST /links { url, alias?, expiration? }
-	▼
-Web API (Inbound Adapter)
-	│  calls ICreateShortUrl
-	▼
-CreateShortUrl (Use Case)
-	│  validate URL/alias/expiration
-	│  if no alias → ICodeGenerator.Generate()
-	│  retry generation until unique (bounded)
-	│  IShortUrlRepository.Add(new ShortUrl)
-	│  ICacheStore.Set(code → url, 24h TTL) [Cache warming]
-	▼
-Response → 201 { code, shortUrl }
-```
+| Capability | Web interface | API |
+| --- | --- | --- |
+| Create a short link | Available | `POST /links` |
+| Follow a short link | Open the returned link | `GET /{code}` returns HTTP 302 |
+| Choose a custom alias or expiration | Not yet exposed in the form | Optional fields on `POST /links` |
+| Read access statistics | No statistics screen yet | `GET /links/{code}/stats` |
+| Copy with a dedicated button | Planned; manual copying works | Not applicable |
 
-## Resolve Flow (Slice 2 + Slice 5: Redis Cache)
+Statistics include recorded accesses, creation time, last access and expiration. Access counts are not unique visitors: repeated requests and automated scanners can contribute.
 
-```text
-Client
-	│  GET /{code}
-	▼
-Web API (Inbound Adapter)
-	│  calls IResolveShortUrl
-	▼
-ResolveShortUrl (Use Case)
-	│  ICacheStore.Get(code)
-	│  │
-	│  ├─ If negative marker ("__NOT_FOUND__") → throw NotFoundException (404)
-	│  │
-	│  ├─ If cache hit (URL found):
-	│  │  ├─ Get entity from DB (to update clicks)
-	│  │  ├─ ++ClicksCount; LastAccessAt = now
-	│  │  ├─ UpdateAsync
-	│  │  └─ Return cached URL
-	│  │
-	│  └─ If cache miss:
-	│     ├─ IShortUrlRepository.GetByCode(code)
-	│     ├─ If not found → cache negative marker (60s TTL) → 404
-	│     ├─ If expired → cache negative marker (60s TTL) → 410
-	│     ├─ ++ClicksCount; LastAccessAt = now
-	│     ├─ UpdateAsync
-	│     ├─ ICacheStore.Set(code → url, 24h TTL)
-	│     └─ Return URL
-	▼
-Response → 302 Redirect Location: originalUrl
-```
+## Engineering approach
 
-## Stats Flow (Slice 3)
+This project brings a backend through design, implementation, testing and public deployment, then connects it to a usable interface. The emphasis is on understandable boundaries and features that can be reviewed end to end.
+
+### Hexagonal architecture
+
+The **Core** contains domain rules, application services and ports, without ASP.NET Core, EF Core or Redis package references. Adapters connect those ports to HTTP, PostgreSQL, caching, code generation and time.
+
+- **HTTP stays at the edge:** Minimal API endpoints translate requests into use-case calls and map results to HTTP responses.
+- **Infrastructure implements Core contracts:** SQL and cache adapters can change without putting their frameworks in the business logic.
+- **Use cases are testable:** repository, cache, code-generator and clock ports allow focused tests of validation and behavior.
+
+![Backend architecture: ASP.NET Core calls inbound ports in a framework-free Core; SQL, Redis, in-memory cache, code generation and time implement outbound ports.](docs/images/ayshort-backend-architecture.png)
+
+*Backend architecture and local infrastructure. The diagram shows PostgreSQL and optional Redis for development; the hosted demo uses in-memory caching. React and cloud hosting are shown separately below.*
+
+### Vertical-slice delivery
+
+Features were delivered one behavior at a time: **create a link → redirect → retrieve statistics**, followed by browser integration and deployment. Each change connects the layers it needs. The repository remains organized into `Core` and `Adapters`; “vertical slices” describes the delivery approach, not a separate feature-folder layout.
+
+The React interface uses a controlled form and local state. A named API helper handles `fetch`, HTTP failures and response-shape checks. Tailwind styling follows the cream, charcoal and olive visual direction of the project cover.
+
+## Public deployment
 
 ```text
-Client
-	│  GET /links/{code}/stats
-	▼
-Web API (Inbound Adapter)
-	│  calls IGetStats
-	▼
-GetStats (Use Case)
-	│  IShortUrlRepository.GetByCode(code)
-	│  if not found → 404
-	│  map entity to stats DTO
-	▼
-Response → 200 { createdAt, clicks, lastAccess, expiration }
+Create a link:
+Browser → app.ayshort.cc (Vercel / React)
+        → /api/links rewrite → Render / ASP.NET Core → Neon / PostgreSQL
+
+Follow a link:
+Browser → ayshort.cc/{code} (Render) → original destination
 ```
 
-### Example Request
-```http
-POST /links HTTP/1.1
-Content-Type: application/json
+| Component | Implementation | Hosted service |
+| --- | --- | --- |
+| Interface | React, TypeScript, Vite and Tailwind CSS | Vercel |
+| API | ASP.NET Core Minimal API, packaged in Docker | Render |
+| Persistence | PostgreSQL with Entity Framework Core / Npgsql | Neon |
+| Cache | Redis adapter or in-memory implementation | In-memory in the public demo; no hosted Redis |
 
-{
-	"url": "https://example.com/very/long/path?x=1",
-	"alias": "my-campaign",
-	"expiration": "2026-01-01T00:00:00Z"
-}
-```
+The database preserves links across API redeploys; the in-memory cache can be rebuilt. `Shortener__BaseUrl` controls the origin used in generated links, while DNS connects the custom domains to their hosts. See the [deployment guide](docs/deployment.md) for configuration and health checks.
 
-### Example Success (201)
-```json
-{
-	"code": "my-campaign",
-	"shortUrl": "https://sho.rt/my-campaign"
-}
-```
+## Verification and current limits
 
-### Example Error (alias taken, 409)
-```json
-{
-	"type": "about:blank",
-	"title": "ConflictException",
-	"status": 409,
-	"detail": "Alias already in use."
-}
-```
+- **Backend:** unit tests cover use cases; integration tests exercise HTTP behavior and persistence against a dedicated PostgreSQL database.
+- **Frontend:** API-helper tests simulate successful responses, validation errors, network failures and invalid response bodies. ESLint and the production build check the frontend locally.
+- **Browser checks:** real creation and redirects, loading/disabled controls, validation and retry, keyboard interaction and narrow layouts were checked during delivery.
+- **CI:** [GitHub Actions](https://github.com/LaouadAyoub/AyShort/actions/workflows/ci.yml) builds and tests the backend on pull requests. Frontend test/lint commands are not currently part of that workflow. Its push filter still names `main`, although the default branch is `master`.
 
-### Example Stats Request
-```http
-GET /links/my-campaign/stats HTTP/1.1
-```
+This is a working portfolio demo, not a measured availability guarantee. Open work includes [redirect independence from click recording (#25)](https://github.com/LaouadAyoub/AyShort/issues/25), [concurrent click-count accuracy (#26)](https://github.com/LaouadAyoub/AyShort/issues/26), [runtime and deployment maintenance (#27)](https://github.com/LaouadAyoub/AyShort/issues/27), and [remaining observability/resilience work (#18)](https://github.com/LaouadAyoub/AyShort/issues/18). Cached-link expiration behavior also needs further coverage; expiration checks must not be assumed complete on every path.
 
-### Example Stats Response (200)
-```json
-{
-	"createdAt": "2025-10-01T10:00:00Z",
-	"clicks": 42,
-	"lastAccess": "2025-10-01T18:30:15Z",
-	"expiration": "2026-01-01T00:00:00Z"
-}
-```
+## Run locally
 
-### Example Stats Error (not found, 404)
-```json
-{
-	"type": "about:blank",
-	"title": "NotFoundException",
-	"status": 404,
-	"detail": "Short URL with code 'unknown' not found."
-}
-```
+Prerequisites: **.NET 9 SDK**, **Node.js 22.14+** and **Docker Compose**. The runtime upgrade is tracked in [#27](https://github.com/LaouadAyoub/AyShort/issues/27).
 
----
+From the repository root, start the local database and Redis, then the API:
 
-## Persistence (Slice 4: SQL)
-
-AyShort uses EF Core for SQL persistence (PostgreSQL recommended). The SQL adapter is isolated in `Adapters/Out/Persistence.Sql`.
-
-**Hexagonal boundaries:** Core has no framework dependencies. All infrastructure (EF, Redis, DI) lives in Adapters.
-
-**Connection string:**
-- Use placeholders in config files (`appsettings.json`, `appsettings.Development.json`).
-- Supply real credentials via environment variables or .NET User Secrets (local dev only).
-- Never commit secrets to source control.
-
-**Migrations:**
-Run EF Core migrations from the SQL adapter:
 ```powershell
-dotnet ef migrations add <Name> --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
-dotnet ef database update --project src/Adapters/Out/Persistence.Sql --startup-project src/Adapters/In/WebApi
+docker compose up -d postgres redis
+$env:ConnectionStrings__Default = "Host=127.0.0.1;Port=5434;Database=ays;User Id=ays;Password=ays"
+$env:Shortener__BaseUrl = "http://localhost:5142"
+dotnet run --project src/Adapters/In/WebApi/WebApi.csproj --launch-profile http
 ```
 
-**Testing:**
-Unit tests cover use cases in Core. Integration tests verify endpoint contracts and persistence.
+These credentials are for the local Docker development database only. The API applies EF Core migrations at startup. Its [local Swagger UI](http://localhost:5142/swagger) lists the endpoints.
 
-**Vertical slice delivery:**
-Each feature is implemented end-to-end, respecting boundaries and keeping changes minimal.
+In a second terminal, from the repository root:
 
----
-
-## Integration Tests (Isolated Test Database)
-
-Integration tests run against a real PostgreSQL database instance separate from the dev database to avoid polluting local data.
-
-1. Start the dedicated test database (defined as `postgres-test` in `docker-compose.yml`):
-	```powershell
-	docker compose up -d postgres-test
-	```
-2. Create (if not already) a database whose name includes `_test` (example: `ayshort_test`). The guard requires `_test` in the name to prevent accidental prod/dev usage.
-3. Set the `TEST_DB_CONNECTION` environment variable (the test harness maps this to the runtime `ConnectionStrings:Default`). Example:
-	```powershell
-	$env:TEST_DB_CONNECTION = "Host=__HOST__;Port=__PORT__;Database=__DB__;User Id=__USER__;Password=__PASSWORD__";
-	```
-4. Run tests:
-	```powershell
-	dotnet test
-	```
-
-Notes:
-- If `TEST_DB_CONNECTION` is missing, integration tests fail fast with a clear error.
-- The safety check rejects databases without `_test` in their name.
-- Migrations are applied automatically on test host startup.
-- Unit tests do not require any database.
-
-### CI (GitHub Actions) Setup
-
-The workflow spins up a disposable Postgres service and sets `TEST_DB_CONNECTION` automatically. Excerpt:
-
-```yaml
-services:
-	postgres-test:
-		image: postgres:16
-		ports:
-			- 5433:5432
-		env:
-			POSTGRES_USER: test
-			POSTGRES_PASSWORD: test
-			POSTGRES_DB: ayshort_test
-		options: >-
-			--health-cmd "pg_isready -U test -d ayshort_test" \
-			--health-interval 5s \
-			--health-timeout 5s \
-			--health-retries 10
-
-env:
-	TEST_DB_CONNECTION: Host=localhost;Port=5433;Database=ayshort_test;User Id=test;Password=test;Include Error Detail=true
-```
-
-Tests are split so unit tests run first (fast feedback) followed by integration tests that need the database.
-
-
----
-
-## Run Dev Infra
-```bash
-docker compose up -d
-```
-
----
-
-## 📚 Documentation
-
-- **[Architecture](docs/02-architecture.md)** - Hexagonal design, flows, and technical decisions
-- **[Product Brief](docs/01-product-brief.md)** - Goals, features, and requirements
-- **[Roadmap](docs/03-roadmap.md)** - Vertical slices and implementation progress
-- **[Testing Redis Cache](docs/04-testing-redis.md)** - Complete guide to verify Redis is working
-- **[Redis Monitoring Quick Start](docs/REDIS-MONITORING.md)** - Commands and tools for monitoring cache
-
----
-
-## 🧪 Testing Redis Cache
-
-### Quick Check
 ```powershell
-# Is Redis working?
-docker exec ayshort-redis redis-cli PING
-# Should return: PONG
-
-# See cached keys
-docker exec ayshort-redis redis-cli KEYS "*"
-
-# Watch cache in real-time
-docker exec -it ayshort-redis redis-cli MONITOR
+cd frontend
+npm ci
+npm run dev
 ```
 
-### Visual Monitoring
-- **RedisInsight** (recommended): https://redis.io/insight/
-- **Redis Commander**: `docker run -d -p 8081:8081 -e REDIS_HOSTS=local:host.docker.internal:6379 rediscommander/redis-commander`
+Open the address printed by Vite. Its development proxy forwards `/api/links` to `http://localhost:5142/links`. Keep both servers running.
 
-### Test Script
-```powershell
-# Automated test that verifies cache warming, hits, and negative caching
-.\scripts\test-redis-cache.ps1
-```
+For automated test commands, database isolation, Redis configuration and API examples, use the [technical guide](docs/technical-guide.md).
 
-See **[docs/04-testing-redis.md](docs/04-testing-redis.md)** for detailed testing guide.
+## Explore the documentation
 
----
-
-This starts:
-- **PostgreSQL** (host port 5434) - main database
-- **PostgreSQL-test** (port 5433) - isolated test database
-- **Redis** (port 6379) - cache
-
-### Configuration
-
-**Redis Cache (Slice 5):**
-- Configure Redis in `appsettings.json`:
-  ```json
-  "Redis": {
-    "Connection": "localhost:6379",
-    "DefaultTtlSeconds": 86400,  // 24 hours for positive cache
-    "NegativeTtlSeconds": 60      // 1 minute for negative cache (404s)
-  }
-  ```
-- If `Redis:Connection` is not set or Redis is unavailable, the app automatically falls back to in-memory cache
-- **Negative caching:** Unknown codes are cached with `"__NOT_FOUND__"` marker for 60 seconds to prevent repeated DB lookups from brute-force probing
-- **Cache warming:** New short URLs are immediately cached on creation for instant first-resolve
-
-**Database:**
-- Set connection string via environment variable or User Secrets:
-  ```powershell
-  $env:ConnectionStrings__Default = "Host=127.0.0.1;Port=5434;Database=ays;User Id=ays;Password=ays"
-  ```
-- For Visual Studio, save the same value in User Secrets:
-  ```powershell
-  dotnet user-secrets set "ConnectionStrings:Default" "Host=127.0.0.1;Port=5434;Database=ays;User Id=ays;Password=ays;Include Error Detail=true" --project src/Adapters/In/WebApi/WebApi.csproj
-  ```
-- The Docker database uses host port 5434 to avoid conflicts with a local PostgreSQL installation on port 5432. After changing the port mapping, run `docker compose up -d postgres` to recreate the container with its existing data volume.
-
-**Running the API:**
-```powershell
-dotnet run --project src/Adapters/In/WebApi/WebApi.csproj
-```
+- [Technical guide](docs/technical-guide.md) — detailed create/resolve/stats flows, API examples, configuration, migrations and tests; preserves the original README material.
+- [Architecture notes](docs/02-architecture.md) — backend boundaries, ports and trade-offs, with historical design targets distinguished from delivered behavior.
+- [Product brief](docs/01-product-brief.md) — original goals and requirements.
+- [Roadmap](docs/03-roadmap.md) — original slice plan; use linked GitHub issues for current delivery status.
+- [Deployment](docs/deployment.md) — Docker, Vercel, Render, Neon and custom-domain configuration.
+- [Frontend guide](frontend/README.md) — frontend commands and development proxy.
+- [Redis testing](docs/04-testing-redis.md) and [monitoring](docs/REDIS-MONITORING.md) — local cache inspection.
