@@ -1,5 +1,12 @@
 # AyShort — Architecture
 
+> These notes preserve the original backend design, including proposed adapters,
+> schema sketches and future reliability targets. They are not an audited list of
+> delivered features or measured service levels. For the current application,
+> visual architecture and known limits, start with the [project README](../README.md)
+> and [technical guide](technical-guide.md). The hosted demo is React on Vercel,
+> the .NET API on Render, and PostgreSQL on Neon, with in-memory caching.
+
 ## 1) Guiding Principle
 **Hexagonal Architecture (Ports & Adapters)**  
 - Keep **Core** (Domain + Use Cases) **framework-free**.  
@@ -26,7 +33,7 @@ Outbound Adapters (Persistence.Sql, Cache.Redis, Codes)
 ▼
 External Systems (Postgres/SQLite, Redis)
 
-````
+```
 
 ---
 
@@ -122,7 +129,7 @@ Indexes:
   "alias": "my-campaign",      
   "expiration": "2026-01-01T00:00:00Z"
 }
-````
+```
 
 **Response 201 (JSON):**
 
@@ -241,7 +248,7 @@ Response → 200 { createdAt, expiration, clicks, lastAccess }
 
 ---
 
-## 8) Non-Functional Requirements (SLOs)
+## 8) Original Non-Functional Targets (not measured guarantees)
 
 * **Latency**: p95 < **30 ms** on cached resolves (single region).
 * **Availability**: target **99.9%** (demo scope).
@@ -270,7 +277,7 @@ Response → 200 { createdAt, expiration, clicks, lastAccess }
 
   * `/health/live` → process up.
   * `/health/ready` → DB + Redis reachable.
-* **Resilience**: short timeouts; retries/backoff (Polly); circuit breaker for Redis with fallback to DB.
+* **Resilience**: readiness checks have bounded waits. Retry/backoff and circuit-breaker policies are planned in [#18](https://github.com/LaouadAyoub/AyShort/issues/18), not delivered guarantees.
 
 ---
 
@@ -287,8 +294,8 @@ Response → 200 { createdAt, expiration, clicks, lastAccess }
 ## 12) Run Modes
 
 * **Local (dev)**: Web API + PostgreSQL (Docker) + Redis (Docker)  ✅ Slice 5
-* **CI (tests)**: spin Postgres/Redis via Docker; run unit + integration tests.
-* **Demo/Prod (optional)**: Azure App Service + managed Postgres/Redis.
+* **CI (tests)**: dedicated PostgreSQL service; run backend unit + integration tests. The current workflow does not start Redis.
+* **Hosted demo**: Vercel frontend + Render API + Neon PostgreSQL; in-memory cache.
 * **Fallback**: If Redis not configured, uses in-memory cache (single instance only).
 
 ---
@@ -297,6 +304,6 @@ Response → 200 { createdAt, expiration, clicks, lastAccess }
 
 * Auth / multi-user ownership.
 * Link editing/deletion.
-* Custom domains.
+* Custom domains are now configured; see [deployment](deployment.md).
 * Advanced analytics (geo/device), exports.
 * Background cleanup of expired links.

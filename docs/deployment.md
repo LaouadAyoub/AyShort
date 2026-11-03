@@ -4,6 +4,15 @@ Frontend: Vercel (`frontend/`). API: Render (repository root). Database: Neon
 PostgreSQL 16 in Frankfurt, database `ays`. The public API uses in-memory caching;
 there is no hosted Redis service.
 
+## Public addresses
+
+- Frontend: [app.ayshort.cc](https://app.ayshort.cc/)
+- Short-link origin: [ayshort.cc](https://ayshort.cc)
+- API documentation: [ayshort.cc/swagger](https://ayshort.cc/swagger)
+
+The provider addresses `ay-short.vercel.app` and `ayshort-api.onrender.com`
+remain available. The Vercel rewrite still targets the Render provider address.
+
 ## API container
 
 The root Dockerfile publishes the existing .NET 9 API in a build stage, then copies
@@ -19,9 +28,9 @@ docker build -t ayshort-api .
 
 ## Render setup
 
-1. Create a Web Service from the AyShort GitHub repository. Select
-   `23-deploy-portfolio-demo` while reviewing this deployment work; switch
-   to `master` after merging. Choose Docker, name `ayshort-api`, and region
+1. Create a Web Service from the AyShort GitHub repository. Select `master`
+   for production and confirm the saved branch selection after refresh.
+   Choose Docker, name `ayshort-api`, and region
    Frankfurt. Leave Root Directory and Docker Build Context Directory empty and
    use the root `Dockerfile`: the build needs the Core and adapter projects.
 2. Review the compute plan before deploying. The smallest paid instance is
@@ -37,8 +46,9 @@ docker build -t ayshort-api .
 
    Never commit the real value, paste it into chat, or put it in Vercel frontend
    variables. For initial migrations, use Neon's direct (non-pooled) connection.
-4. Set `Shortener__BaseUrl` to the service's actual public Render URL, using its
-   full HTTPS origin, with no trailing path. Otherwise generated links use localhost.
+4. Set `Shortener__BaseUrl=https://ayshort.cc` after verifying that custom domain
+   and its HTTPS certificate. Before a custom domain exists, use the public
+   Render HTTPS origin. Otherwise generated links use localhost.
 5. Set Health Check Path to `/health/live`. Keep the Docker command override
    empty so the image's entrypoint starts the API on Render's assigned `PORT`.
    Deploy using the selected compute plan.
@@ -70,7 +80,28 @@ The production deployment must include this file (currently from `master`);
 adding it to a feature branch alone does not update the public production site.
 Verify creation, validation errors, failure feedback, and redirection from the
 public frontend after deployment. Keep `Shortener__BaseUrl` on Render set to
-`https://ayshort-api.onrender.com` so returned short links use the public API.
+`https://ayshort.cc` so returned short links use the custom domain.
+
+## Custom domains
+
+Keep DNS at Namecheap and configure the hosts separately:
+
+| DNS type | Host | Target |
+| --- | --- | --- |
+| CNAME | `app` | Exact target shown in the Vercel project Domains screen |
+| A | `@` | Exact root-domain IP shown in Render's Custom Domains screen |
+| CNAME | `www` | `ayshort-api.onrender.com` |
+
+Add `app.ayshort.cc` to the frontend's production environment in Vercel and
+`ayshort.cc` to the Render service. Verify DNS and HTTPS in both dashboards.
+Keep the existing provider domains enabled so previously issued links continue
+to work. The A-record target at setup was `216.24.57.1`; use the provider's
+current instructions if recreating the configuration.
+
+DNS determines which host receives a request. `Shortener__BaseUrl` determines
+the origin printed in newly generated links. Changing that setting does not
+replace the stored link codes or destinations. The current API has no `/`
+homepage redirect to the frontend: share `https://app.ayshort.cc/` as the demo.
 
 ## Runtime maintenance
 
