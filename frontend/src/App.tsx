@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { createShortLink, LinkApiError } from './api/links'
 import type { CreateShortUrlResult } from './api/links'
+import { ShortLinkResult } from './features/create-link/ShortLinkResult'
 
 function App() {
   const [url, setUrl] = useState('')
@@ -59,12 +60,7 @@ function App() {
         {error && <p id="link-error" role="alert">{error.message}</p>}
       </form>
       {result && (
-        <section className="mt-8 rounded-lg border border-border bg-surface p-6" aria-labelledby="result-heading">
-          <h2 id="result-heading" className="font-semibold">Your short link</h2>
-          <a className="mt-2 block break-all text-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-focus" href={result.shortUrl}>
-            {result.shortUrl}
-          </a>
-        </section>
+        <ShortLinkResult key={result.shortUrl} shortUrl={result.shortUrl} />
       )}
     </main>
   )
