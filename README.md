@@ -73,7 +73,7 @@ This is a working portfolio demo, not a measured availability guarantee. Open wo
 
 ## Run locally
 
-Prerequisites: **.NET 9 SDK**, **Node.js 22.14+** and **Docker Compose**. The runtime upgrade is tracked in [#27](https://github.com/LaouadAyoub/AyShort/issues/27).
+Prerequisites: **.NET 10 SDK**, **Node.js 22.14+** and **Docker Compose**.
 
 From the repository root, start the local database and Redis, then the API:
 

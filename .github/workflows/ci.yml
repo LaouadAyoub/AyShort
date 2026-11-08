@@ -43,7 +43,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restore
         run: dotnet restore
@@ -68,6 +68,9 @@ jobs:
         run: |
           echo "Running integration tests against $TEST_DB_CONNECTION" | sed 's/Password=[^;]*/Password=****/'
           dotnet test --no-build -c Release --filter "FullyQualifiedName~Integration" --verbosity normal
+
+      - name: Build API container image
+        run: docker build --pull --tag ayshort:ci .
 
       - name: Summary
         if: always()
