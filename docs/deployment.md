@@ -15,7 +15,7 @@ remain available. The Vercel rewrite still targets the Render provider address.
 
 ## API container
 
-The root Dockerfile publishes the existing .NET 9 API in a build stage, then copies
+The root Dockerfile publishes the .NET 10 API in a build stage, then copies
 only its published output into a smaller ASP.NET runtime image. It runs as the
 non-root `app` user and listens on the host's `PORT`, or 8080 locally.
 The image disables Redis by default; environment variables can override this.
@@ -105,6 +105,6 @@ homepage redirect to the frontend: share `https://app.ayshort.cc/` as the demo.
 
 ## Runtime maintenance
 
-The project currently targets .NET 9. Plan a separate upgrade to a supported .NET
-LTS release: .NET 9 support ends on 10 November 2026. Upgrade the projects,
-dependencies, CI SDK and container images together and rerun the tests.
+The project targets .NET 10 LTS. Keep the project targets, compatible dependencies,
+CI SDK, and Docker images aligned when upgrading. After deploying a runtime update,
+check readiness, open a previously created short link, and create and open a new one.
