@@ -100,6 +100,8 @@ For automated test commands, database isolation, Redis configuration and API exa
 
 ## Explore the documentation
 
+- [Local MCP checkpoint](docs/mcp.md) — Streamable HTTP host, temporary `server_info` tool, Phase 0 findings and protocol verification. MCP link creation and statistics are planned follow-up slices.
+
 - [Technical guide](docs/technical-guide.md) — detailed create/resolve/stats flows, API examples, configuration, migrations and tests; preserves the original README material.
 - [Architecture notes](docs/02-architecture.md) — backend boundaries, ports and trade-offs, with historical design targets distinguished from delivered behavior.
 - [Product brief](docs/01-product-brief.md) — original goals and requirements.
